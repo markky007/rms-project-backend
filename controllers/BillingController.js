@@ -11,9 +11,9 @@ exports.calculateBill = async (req, res) => {
             SELECT r.base_rent, b.water_rate, b.elec_rate 
             FROM rooms r
             JOIN buildings b ON r.building_id = b.building_id
-            WHERE r.room_id = ?
+            WHERE r.room_id = ? OR r.room_number = ?
         `,
-      [room_id]
+      [room_id, room_id]
     );
 
     if (roomRows.length === 0)
