@@ -174,3 +174,29 @@ exports.createInvoice = async (req, res) => {
     connection.release();
   }
 };
+// Get All Invoices
+exports.getAllInvoices = async (req, res) => {
+  try {
+    const query = `
+            SELECT 
+                i.invoice_id, 
+                i.month_year, 
+                i.total_amount, 
+                i.status, 
+                i.issue_date,
+                r.room_number,
+                t.full_name as tenant_name
+            FROM invoices i
+            JOIN contracts c ON i.contract_id = c.contract_id
+            JOIN rooms r ON c.room_id = r.room_id
+            JOIN tenants t ON c.tenant_id = t.tenant_id
+            ORDER BY i.issue_date DESC, i.invoice_id DESC
+        `;
+
+    const [rows] = await db.query(query);
+    res.json(rows);
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: "Failed to fetch invoices" });
+  }
+};
