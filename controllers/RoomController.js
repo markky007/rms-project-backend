@@ -1,28 +1,20 @@
 const db = require("../db");
 
-// Get all rooms, optionally filtered by building
+// Get all rooms
 exports.getAllRooms = async (req, res) => {
   try {
-    const { building_id } = req.query;
     let query = `
-            SELECT r.*, b.name as building_name,
+            SELECT r.*,
                    t.tenant_id, t.full_name as tenant_name, t.phone as tenant_phone,
                    c.contract_id as current_contract_id
             FROM rooms r
-            JOIN buildings b ON r.building_id = b.building_id
             LEFT JOIN tenants t ON r.current_tenant_id = t.tenant_id
             LEFT JOIN contracts c ON r.room_id = c.room_id AND c.is_active = TRUE
         `;
-    const params = [];
 
-    if (building_id) {
-      query += " WHERE r.building_id = ?";
-      params.push(building_id);
-    }
+    query += " ORDER BY r.house_number ASC";
 
-    query += " ORDER BY b.name, r.floor, r.room_number ASC";
-
-    const [rooms] = await db.query(query, params);
+    const [rooms] = await db.query(query);
     res.json(rooms);
   } catch (err) {
     console.error(err);
@@ -35,11 +27,10 @@ exports.getRoomById = async (req, res) => {
   try {
     const { id } = req.params;
     const [rooms] = await db.query(
-      `SELECT r.*, b.name as building_name,
+      `SELECT r.*,
               t.tenant_id, t.full_name as tenant_name, t.phone as tenant_phone,
               c.contract_id as current_contract_id
        FROM rooms r
-       JOIN buildings b ON r.building_id = b.building_id
        LEFT JOIN tenants t ON r.current_tenant_id = t.tenant_id
        LEFT JOIN contracts c ON r.room_id = c.room_id AND c.is_active = TRUE
        WHERE r.room_id = ?`,
@@ -61,49 +52,52 @@ exports.getRoomById = async (req, res) => {
 exports.createRoom = async (req, res) => {
   try {
     const {
-      building_id,
-      room_number,
-      floor,
+      house_number,
+      bedrooms,
+      bathrooms,
       base_rent,
       status,
       current_tenant_id,
+      water_rate,
+      elec_rate,
     } = req.body;
 
     // Validate required fields
-    if (!building_id || !room_number || floor === undefined || !base_rent) {
+    if (!house_number || !base_rent) {
       return res.status(400).json({ error: "Missing required fields" });
     }
 
-    // Check if room number already exists in the building
+    // Check if house number already exists
     const [existing] = await db.query(
-      "SELECT room_id FROM rooms WHERE building_id = ? AND room_number = ?",
-      [building_id, room_number]
+      "SELECT room_id FROM rooms WHERE house_number = ?",
+      [house_number]
     );
 
     if (existing.length > 0) {
       return res.status(400).json({
-        error: "Room number already exists in this building",
+        error: "House number already exists",
       });
     }
 
     const [result] = await db.query(
-      "INSERT INTO rooms (building_id, room_number, floor, base_rent, status, current_tenant_id) VALUES (?, ?, ?, ?, ?, ?)",
+      "INSERT INTO rooms (house_number, bedrooms, bathrooms, base_rent, status, current_tenant_id, water_rate, elec_rate) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
       [
-        building_id,
-        room_number,
-        floor,
+        house_number,
+        bedrooms || 1,
+        bathrooms || 1,
         base_rent,
         status || "vacant",
         current_tenant_id || null,
+        water_rate || 18.0,
+        elec_rate || 7.0,
       ]
     );
 
-    // Fetch the created room with building name
+    // Fetch the created room
     const [newRoom] = await db.query(
-      `SELECT r.*, b.name as building_name,
+      `SELECT r.*,
               t.tenant_id, t.full_name as tenant_name, t.phone as tenant_phone
        FROM rooms r
-       JOIN buildings b ON r.building_id = b.building_id
        LEFT JOIN tenants t ON r.current_tenant_id = t.tenant_id
        WHERE r.room_id = ?`,
       [result.insertId]
@@ -121,12 +115,14 @@ exports.updateRoom = async (req, res) => {
   try {
     const { id } = req.params;
     const {
-      building_id,
-      room_number,
-      floor,
+      house_number,
+      bedrooms,
+      bathrooms,
       base_rent,
       status,
       current_tenant_id,
+      water_rate,
+      elec_rate,
     } = req.body;
 
     // Check if room exists
@@ -139,16 +135,16 @@ exports.updateRoom = async (req, res) => {
       return res.status(404).json({ error: "Room not found" });
     }
 
-    // Check for duplicate room number in the same building
-    if (building_id && room_number) {
+    // Check for duplicate house number
+    if (house_number) {
       const [duplicate] = await db.query(
-        "SELECT room_id FROM rooms WHERE building_id = ? AND room_number = ? AND room_id != ?",
-        [building_id, room_number, id]
+        "SELECT room_id FROM rooms WHERE house_number = ? AND room_id != ?",
+        [house_number, id]
       );
 
       if (duplicate.length > 0) {
         return res.status(400).json({
-          error: "Room number already exists in this building",
+          error: "House number already exists",
         });
       }
     }
@@ -157,17 +153,17 @@ exports.updateRoom = async (req, res) => {
     const updates = [];
     const params = [];
 
-    if (building_id !== undefined) {
-      updates.push("building_id = ?");
-      params.push(building_id);
+    if (house_number !== undefined) {
+      updates.push("house_number = ?");
+      params.push(house_number);
     }
-    if (room_number !== undefined) {
-      updates.push("room_number = ?");
-      params.push(room_number);
+    if (bedrooms !== undefined) {
+      updates.push("bedrooms = ?");
+      params.push(bedrooms);
     }
-    if (floor !== undefined) {
-      updates.push("floor = ?");
-      params.push(floor);
+    if (bathrooms !== undefined) {
+      updates.push("bathrooms = ?");
+      params.push(bathrooms);
     }
     if (base_rent !== undefined) {
       updates.push("base_rent = ?");
@@ -180,6 +176,14 @@ exports.updateRoom = async (req, res) => {
     if (current_tenant_id !== undefined) {
       updates.push("current_tenant_id = ?");
       params.push(current_tenant_id);
+    }
+    if (water_rate !== undefined) {
+      updates.push("water_rate = ?");
+      params.push(water_rate);
+    }
+    if (elec_rate !== undefined) {
+      updates.push("elec_rate = ?");
+      params.push(elec_rate);
     }
 
     if (updates.length === 0) {
@@ -194,10 +198,9 @@ exports.updateRoom = async (req, res) => {
 
     // Fetch updated room
     const [updatedRoom] = await db.query(
-      `SELECT r.*, b.name as building_name,
+      `SELECT r.*,
               t.tenant_id, t.full_name as tenant_name, t.phone as tenant_phone
        FROM rooms r
-       JOIN buildings b ON r.building_id = b.building_id
        LEFT JOIN tenants t ON r.current_tenant_id = t.tenant_id
        WHERE r.room_id = ?`,
       [id]
@@ -263,10 +266,9 @@ exports.updateRoomStatus = async (req, res) => {
 
     // Fetch updated room
     const [updatedRoom] = await db.query(
-      `SELECT r.*, b.name as building_name,
+      `SELECT r.*,
               t.tenant_id, t.full_name as tenant_name, t.phone as tenant_phone
        FROM rooms r
-       JOIN buildings b ON r.building_id = b.building_id
        LEFT JOIN tenants t ON r.current_tenant_id = t.tenant_id
        WHERE r.room_id = ?`,
       [id]

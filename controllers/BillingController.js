@@ -3,15 +3,12 @@ const db = require("../db");
 // Calculate bill based on current reading and previous reading
 exports.calculateBill = async (req, res) => {
   try {
-    const { room_id, current_water, current_elec, month_year } = req.body;
-
-    // 1. Fetch Room & Building Details (for rates)
+    // 1. Fetch Room Details & Rates from the Room itself
     const [roomRows] = await db.query(
       `
-            SELECT r.base_rent, b.water_rate, b.elec_rate 
+            SELECT r.base_rent, r.water_rate, r.elec_rate 
             FROM rooms r
-            JOIN buildings b ON r.building_id = b.building_id
-            WHERE r.room_id = ? OR r.room_number = ?
+            WHERE r.room_id = ? OR r.house_number = ?
         `,
       [room_id, room_id]
     );
@@ -90,11 +87,11 @@ exports.createInvoice = async (req, res) => {
     // ... (Repeating fetch logic akin to calculateBill for safety, or trusting frontend if simple)
     // For production, always Recalculate. Here we'll do a simplified version based on request but fetching rates again.
 
+    // 1. Re-calculate to match backend state (ensure integrity)
     const [roomRows] = await connection.query(
       `
-            SELECT r.base_rent, b.water_rate, b.elec_rate 
+            SELECT r.base_rent, r.water_rate, r.elec_rate 
             FROM rooms r
-            JOIN buildings b ON r.building_id = b.building_id
             WHERE r.room_id = ?
         `,
       [room_id]
@@ -184,7 +181,7 @@ exports.getAllInvoices = async (req, res) => {
                 i.total_amount, 
                 i.status, 
                 i.issue_date,
-                r.room_number,
+                r.house_number,
                 t.full_name as tenant_name
             FROM invoices i
             JOIN contracts c ON i.contract_id = c.contract_id

@@ -25,14 +25,12 @@ CREATE TABLE IF NOT EXISTS buildings (
 -- 3. Rooms
 CREATE TABLE IF NOT EXISTS rooms (
     room_id INT AUTO_INCREMENT PRIMARY KEY,
-    building_id INT NOT NULL,
-    room_number VARCHAR(20) NOT NULL,
-    floor INT NOT NULL,
+    house_number VARCHAR(20) NOT NULL UNIQUE,
+    bedrooms INT NOT NULL DEFAULT 1,
+    bathrooms INT NOT NULL DEFAULT 1,
     base_rent DECIMAL(10, 2) NOT NULL,
     status ENUM('vacant', 'occupied', 'reserved', 'maintenance') NOT NULL DEFAULT 'vacant',
-    current_tenant_id INT NULL,
-    FOREIGN KEY (building_id) REFERENCES buildings(building_id) ON DELETE CASCADE,
-    UNIQUE(building_id, room_number)
+    current_tenant_id INT NULL
 );
 
 -- 4. Tenants
