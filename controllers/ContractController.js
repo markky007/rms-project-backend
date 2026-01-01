@@ -5,20 +5,25 @@ exports.getAllContracts = async (req, res) => {
   try {
     const { room_id, tenant_id, is_active } = req.query;
 
-    let query = "SELECT * FROM contracts";
+    let query = `
+      SELECT c.*, r.house_number, t.full_name as tenant_name, t.phone as tenant_phone
+      FROM contracts c
+      JOIN rooms r ON c.room_id = r.room_id
+      JOIN tenants t ON c.tenant_id = t.tenant_id
+    `;
     let conditions = [];
     let values = [];
 
     if (room_id) {
-      conditions.push("room_id = ?");
+      conditions.push("c.room_id = ?");
       values.push(room_id);
     }
     if (tenant_id) {
-      conditions.push("tenant_id = ?");
+      conditions.push("c.tenant_id = ?");
       values.push(tenant_id);
     }
     if (is_active !== undefined) {
-      conditions.push("is_active = ?");
+      conditions.push("c.is_active = ?");
       values.push(is_active === "true" || is_active === "1");
     }
 
@@ -26,7 +31,7 @@ exports.getAllContracts = async (req, res) => {
       query += " WHERE " + conditions.join(" AND ");
     }
 
-    query += " ORDER BY created_at DESC";
+    query += " ORDER BY c.created_at DESC";
 
     const [rows] = await db.query(query, values);
     res.json(rows);
@@ -231,5 +236,61 @@ exports.terminateContract = async (req, res) => {
   } catch (error) {
     console.error("Error terminating contract:", error);
     res.status(500).json({ error: "Failed to terminate contract" });
+  }
+};
+// Delete contract
+exports.deleteContract = async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    // Check if contract exists
+    const [existing] = await db.query(
+      "SELECT * FROM contracts WHERE contract_id = ?",
+      [id]
+    );
+
+    if (existing.length === 0) {
+      return res.status(404).json({ error: "Contract not found" });
+    }
+
+    const contract = existing[0];
+
+    // If active, clear room status
+    if (contract.is_active) {
+      await db.query(
+        "UPDATE rooms SET status = 'vacant', current_tenant_id = NULL WHERE room_id = ?",
+        [contract.room_id]
+      );
+    }
+
+    // START FIX: Cascade delete items
+    const [invoices] = await db.query(
+      "SELECT invoice_id FROM invoices WHERE contract_id = ?",
+      [id]
+    );
+
+    if (invoices.length > 0) {
+      const invoiceIds = invoices.map((i) => i.invoice_id);
+
+      // 1. Delete payments associated with these invoices
+      await db.query("DELETE FROM payments WHERE invoice_id IN (?)", [
+        invoiceIds,
+      ]);
+
+      // 2. Delete invoice_items
+      await db.query("DELETE FROM invoice_items WHERE invoice_id IN (?)", [
+        invoiceIds,
+      ]);
+
+      // 3. Delete invoices
+      await db.query("DELETE FROM invoices WHERE contract_id = ?", [id]);
+    }
+
+    await db.query("DELETE FROM contracts WHERE contract_id = ?", [id]);
+
+    res.json({ message: "Contract deleted successfully" });
+  } catch (error) {
+    console.error("Error deleting contract:", error);
+    res.status(500).json({ error: "Failed to delete contract" });
   }
 };

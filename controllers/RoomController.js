@@ -218,18 +218,48 @@ exports.deleteRoom = async (req, res) => {
   try {
     const { id } = req.params;
 
-    // Check if room has active contracts
+    // 1. Delete Meter Readings
+    await db.query("DELETE FROM meter_readings WHERE room_id = ?", [id]);
+
+    // 2. Find associated Contracts
     const [contracts] = await db.query(
-      "SELECT contract_id FROM contracts WHERE room_id = ? AND is_active = TRUE",
+      "SELECT contract_id FROM contracts WHERE room_id = ?",
       [id]
     );
 
     if (contracts.length > 0) {
-      return res.status(400).json({
-        error: "Cannot delete room with active contracts",
-      });
+      const contractIds = contracts.map((c) => c.contract_id);
+
+      // 3. Find associated Invoices
+      const [invoices] = await db.query(
+        "SELECT invoice_id FROM invoices WHERE contract_id IN (?)",
+        [contractIds]
+      );
+
+      if (invoices.length > 0) {
+        const invoiceIds = invoices.map((i) => i.invoice_id);
+
+        // 4. Delete Payments
+        await db.query("DELETE FROM payments WHERE invoice_id IN (?)", [
+          invoiceIds,
+        ]);
+
+        // 5. Delete Invoice Items
+        await db.query("DELETE FROM invoice_items WHERE invoice_id IN (?)", [
+          invoiceIds,
+        ]);
+
+        // 6. Delete Invoices
+        await db.query("DELETE FROM invoices WHERE contract_id IN (?)", [
+          contractIds,
+        ]);
+      }
+
+      // 7. Delete Contracts
+      await db.query("DELETE FROM contracts WHERE room_id = ?", [id]);
     }
 
+    // 8. Delete Room
     const [result] = await db.query("DELETE FROM rooms WHERE room_id = ?", [
       id,
     ]);

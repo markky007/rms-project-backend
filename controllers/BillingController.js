@@ -3,6 +3,8 @@ const db = require("../db");
 // Calculate bill based on current reading and previous reading
 exports.calculateBill = async (req, res) => {
   try {
+    const { room_id, current_water, current_elec } = req.body;
+
     // 1. Fetch Room Details & Rates from the Room itself
     const [roomRows] = await db.query(
       `
@@ -195,5 +197,48 @@ exports.getAllInvoices = async (req, res) => {
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: "Failed to fetch invoices" });
+  }
+};
+
+// Get Invoice by ID
+exports.getInvoiceById = async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    // 1. Get Invoice Details
+    const [invoiceRows] = await db.query(
+      `
+      SELECT 
+        i.*,
+        r.house_number,
+        t.full_name as tenant_name,
+        r.room_id
+      FROM invoices i
+      JOIN contracts c ON i.contract_id = c.contract_id
+      JOIN rooms r ON c.room_id = r.room_id
+      JOIN tenants t ON c.tenant_id = t.tenant_id
+      WHERE i.invoice_id = ?
+    `,
+      [id]
+    );
+
+    if (invoiceRows.length === 0) {
+      return res.status(404).json({ error: "Invoice not found" });
+    }
+
+    const invoice = invoiceRows[0];
+
+    // 2. Get Invoice Items
+    const [itemRows] = await db.query(
+      "SELECT * FROM invoice_items WHERE invoice_id = ?",
+      [id]
+    );
+
+    invoice.items = itemRows;
+
+    res.json(invoice);
+  } catch (err) {
+    console.error("Error fetching invoice:", err);
+    res.status(500).json({ error: "Failed to fetch invoice details" });
   }
 };
