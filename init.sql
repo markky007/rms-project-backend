@@ -30,6 +30,7 @@ CREATE TABLE IF NOT EXISTS rooms (
     floor INT NOT NULL,
     base_rent DECIMAL(10, 2) NOT NULL,
     status ENUM('vacant', 'occupied', 'reserved', 'maintenance') NOT NULL DEFAULT 'vacant',
+    current_tenant_id INT NULL,
     FOREIGN KEY (building_id) REFERENCES buildings(building_id) ON DELETE CASCADE,
     UNIQUE(building_id, room_number)
 );
@@ -124,6 +125,11 @@ CREATE TABLE IF NOT EXISTS maintenance_requests (
     resolved_date DATETIME,
     FOREIGN KEY (room_id) REFERENCES rooms(room_id)
 );
+
+-- Add foreign key for current_tenant_id (after tenants table exists)
+ALTER TABLE rooms 
+ADD CONSTRAINT fk_rooms_current_tenant 
+FOREIGN KEY (current_tenant_id) REFERENCES tenants(tenant_id) ON DELETE SET NULL;
 
 -- Create Indexes for performance
 CREATE INDEX idx_room_status ON rooms(status);

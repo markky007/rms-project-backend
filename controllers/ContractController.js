@@ -80,11 +80,11 @@ exports.createContract = async (req, res) => {
       [room_id, tenant_id, start_date, end_date, deposit, rent_amount]
     );
 
-    // Update room status to occupied
-    await db.query("UPDATE rooms SET status = ? WHERE room_id = ?", [
-      "occupied",
-      room_id,
-    ]);
+    // Update room status to occupied and set current tenant
+    await db.query(
+      "UPDATE rooms SET status = ?, current_tenant_id = ? WHERE room_id = ?",
+      ["occupied", tenant_id, room_id]
+    );
 
     res.status(201).json({
       contract_id: result.insertId,
@@ -164,6 +164,33 @@ exports.updateContract = async (req, res) => {
       return res.status(404).json({ error: "Contract not found" });
     }
 
+    // If is_active was updated, update room's current_tenant_id
+    if (is_active !== undefined) {
+      const [contract] = await db.query(
+        "SELECT room_id, tenant_id FROM contracts WHERE contract_id = ?",
+        [id]
+      );
+
+      if (contract.length > 0) {
+        const { room_id: contractRoomId, tenant_id: contractTenantId } =
+          contract[0];
+
+        if (is_active) {
+          // Contract activated - set current tenant
+          await db.query(
+            "UPDATE rooms SET current_tenant_id = ?, status = 'occupied' WHERE room_id = ?",
+            [contractTenantId, contractRoomId]
+          );
+        } else {
+          // Contract deactivated - clear current tenant
+          await db.query(
+            "UPDATE rooms SET current_tenant_id = NULL, status = 'vacant' WHERE room_id = ?",
+            [contractRoomId]
+          );
+        }
+      }
+    }
+
     res.json({ message: "Contract updated successfully" });
   } catch (error) {
     console.error("Error updating contract:", error);
@@ -194,11 +221,11 @@ exports.terminateContract = async (req, res) => {
       [id]
     );
 
-    // Update room status to vacant
-    await db.query("UPDATE rooms SET status = ? WHERE room_id = ?", [
-      "vacant",
-      room_id,
-    ]);
+    // Update room status to vacant and clear current tenant
+    await db.query(
+      "UPDATE rooms SET status = ?, current_tenant_id = NULL WHERE room_id = ?",
+      ["vacant", room_id]
+    );
 
     res.json({ message: "Contract terminated successfully" });
   } catch (error) {
