@@ -6,10 +6,12 @@ exports.getAllRooms = async (req, res) => {
     const { building_id } = req.query;
     let query = `
             SELECT r.*, b.name as building_name,
-                   t.tenant_id, t.full_name as tenant_name, t.phone as tenant_phone
+                   t.tenant_id, t.full_name as tenant_name, t.phone as tenant_phone,
+                   c.contract_id as current_contract_id
             FROM rooms r
             JOIN buildings b ON r.building_id = b.building_id
             LEFT JOIN tenants t ON r.current_tenant_id = t.tenant_id
+            LEFT JOIN contracts c ON r.room_id = c.room_id AND c.is_active = TRUE
         `;
     const params = [];
 
@@ -34,10 +36,12 @@ exports.getRoomById = async (req, res) => {
     const { id } = req.params;
     const [rooms] = await db.query(
       `SELECT r.*, b.name as building_name,
-              t.tenant_id, t.full_name as tenant_name, t.phone as tenant_phone
+              t.tenant_id, t.full_name as tenant_name, t.phone as tenant_phone,
+              c.contract_id as current_contract_id
        FROM rooms r
        JOIN buildings b ON r.building_id = b.building_id
        LEFT JOIN tenants t ON r.current_tenant_id = t.tenant_id
+       LEFT JOIN contracts c ON r.room_id = c.room_id AND c.is_active = TRUE
        WHERE r.room_id = ?`,
       [id]
     );
