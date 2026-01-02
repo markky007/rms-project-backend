@@ -4,7 +4,7 @@ const db = require("../db");
 exports.getAllTenants = async (req, res) => {
   try {
     const [rows] = await db.query(
-      "SELECT * FROM tenants ORDER BY created_at DESC"
+      "SELECT * FROM tenants ORDER BY tenant_id ASC"
     );
     res.json(rows);
   } catch (error) {

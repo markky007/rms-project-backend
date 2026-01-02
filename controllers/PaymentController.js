@@ -22,7 +22,7 @@ exports.getAllPayments = async (req, res) => {
       query += " WHERE " + conditions.join(" AND ");
     }
 
-    query += " ORDER BY payment_date DESC";
+    query += " ORDER BY payment_id ASC";
 
     const [rows] = await db.query(query, values);
     res.json(rows);

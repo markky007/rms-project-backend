@@ -31,7 +31,7 @@ exports.getAllContracts = async (req, res) => {
       query += " WHERE " + conditions.join(" AND ");
     }
 
-    query += " ORDER BY c.created_at DESC";
+    query += " ORDER BY c.contract_id ASC";
 
     const [rows] = await db.query(query, values);
     res.json(rows);

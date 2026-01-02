@@ -70,6 +70,37 @@ exports.calculateBill = async (req, res) => {
   }
 };
 
+// Get Latest Meter Reading for a Room
+exports.getLatestReadings = async (req, res) => {
+  try {
+    const { room_id } = req.params;
+
+    const [rows] = await db.query(
+      `
+            SELECT water_reading, elec_reading 
+            FROM meter_readings 
+            WHERE room_id = ? 
+            ORDER BY reading_date DESC 
+            LIMIT 1
+        `,
+      [room_id]
+    );
+
+    if (rows.length === 0) {
+      // No previous readings found (new room)
+      return res.json({ water: 0, elec: 0 });
+    }
+
+    res.json({
+      water: rows[0].water_reading,
+      elec: rows[0].elec_reading,
+    });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: "Failed to fetch latest readings" });
+  }
+};
+
 // Create Invoice and save Meter Reading
 exports.createInvoice = async (req, res) => {
   const connection = await db.getConnection();
@@ -189,7 +220,7 @@ exports.getAllInvoices = async (req, res) => {
             JOIN contracts c ON i.contract_id = c.contract_id
             JOIN rooms r ON c.room_id = r.room_id
             JOIN tenants t ON c.tenant_id = t.tenant_id
-            ORDER BY i.issue_date DESC, i.invoice_id DESC
+            ORDER BY i.invoice_id ASC
         `;
 
     const [rows] = await db.query(query);

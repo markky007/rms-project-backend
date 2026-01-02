@@ -12,7 +12,7 @@ exports.getAllRooms = async (req, res) => {
             LEFT JOIN contracts c ON r.room_id = c.room_id AND c.is_active = TRUE
         `;
 
-    query += " ORDER BY r.house_number ASC";
+    query += " ORDER BY r.room_id ASC";
 
     const [rooms] = await db.query(query);
     res.json(rooms);

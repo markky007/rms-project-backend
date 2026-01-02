@@ -22,7 +22,7 @@ exports.getAllMaintenanceRequests = async (req, res) => {
       query += " WHERE " + conditions.join(" AND ");
     }
 
-    query += " ORDER BY reported_date DESC";
+    query += " ORDER BY request_id ASC";
 
     const [rows] = await db.query(query, values);
     res.json(rows);

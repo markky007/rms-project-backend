@@ -5,7 +5,7 @@ const bcrypt = require("bcrypt");
 exports.getAllUsers = async (req, res) => {
   try {
     const [rows] = await db.query(
-      "SELECT user_id, username, role, created_at FROM users"
+      "SELECT user_id, username, role, created_at FROM users ORDER BY user_id ASC"
     );
     res.json(rows);
   } catch (error) {
