@@ -3,7 +3,7 @@ const db = require("../db");
 // Calculate bill based on current reading and previous reading
 exports.calculateBill = async (req, res) => {
   try {
-    const { room_id, current_water, current_elec } = req.body;
+    const { room_id, current_water, current_elec, month_year } = req.body;
 
     // 1. Fetch Room Details & Rates from the Room itself
     const [roomRows] = await db.query(
@@ -19,23 +19,23 @@ exports.calculateBill = async (req, res) => {
       return res.status(404).json({ error: "Room not found" });
     const room = roomRows[0];
 
-    // 2. Fetch Previous Month's Reading
-    // Logic: specific month sorting or just taking the latest before this one
-    const [prevReadingRows] = await db.query(
-      `
-            SELECT water_reading, elec_reading 
-            FROM meter_readings 
-            WHERE room_id = ? 
-            ORDER BY reading_date DESC 
-            LIMIT 1
-        `,
-      [room_id]
+    // 2. Fetch Previous Month's Reading from meter_readings
+    let prevWater = 0;
+    let prevElec = 0;
+
+    const [prevRows] = await db.query(
+      `SELECT water_reading, elec_reading 
+       FROM meter_readings 
+       WHERE room_id = ? AND month_year < ?
+       ORDER BY month_year DESC
+       LIMIT 1`,
+      [room_id, month_year]
     );
 
-    const prevWater =
-      prevReadingRows.length > 0 ? prevReadingRows[0].water_reading : 0;
-    const prevElec =
-      prevReadingRows.length > 0 ? prevReadingRows[0].elec_reading : 0;
+    if (prevRows.length > 0) {
+      prevWater = prevRows[0].water_reading;
+      prevElec = prevRows[0].elec_reading;
+    }
 
     // 3. Validation
     if (current_water < prevWater || current_elec < prevElec) {
@@ -74,20 +74,33 @@ exports.calculateBill = async (req, res) => {
 exports.getLatestReadings = async (req, res) => {
   try {
     const { room_id } = req.params;
+    const { month_year } = req.query;
 
-    const [rows] = await db.query(
-      `
-            SELECT water_reading, elec_reading 
-            FROM meter_readings 
-            WHERE room_id = ? 
-            ORDER BY reading_date DESC 
-            LIMIT 1
-        `,
-      [room_id]
-    );
+    let query, params;
+
+    if (month_year) {
+      query = `
+        SELECT water_reading, elec_reading 
+        FROM meter_readings 
+        WHERE room_id = ? AND month_year < ?
+        ORDER BY month_year DESC 
+        LIMIT 1
+      `;
+      params = [room_id, month_year];
+    } else {
+      query = `
+        SELECT water_reading, elec_reading 
+        FROM meter_readings 
+        WHERE room_id = ? 
+        ORDER BY month_year DESC 
+        LIMIT 1
+      `;
+      params = [room_id];
+    }
+
+    const [rows] = await db.query(query, params);
 
     if (rows.length === 0) {
-      // No previous readings found (new room)
       return res.json({ water: 0, elec: 0 });
     }
 
@@ -116,30 +129,38 @@ exports.createInvoice = async (req, res) => {
       recorded_by,
     } = req.body;
 
-    // 1. Re-calculate to match backend state (ensure integrity)
-    // ... (Repeating fetch logic akin to calculateBill for safety, or trusting frontend if simple)
-    // For production, always Recalculate. Here we'll do a simplified version based on request but fetching rates again.
+    // Check for duplicate invoice (same contract and month_year)
+    const [existingInvoice] = await connection.query(
+      `SELECT invoice_id 
+       FROM invoices 
+       WHERE contract_id = ? AND month_year = ?`,
+      [contract_id, month_year]
+    );
 
-    // 1. Re-calculate to match backend state (ensure integrity)
+    if (existingInvoice.length > 0) {
+      await connection.rollback();
+      return res.status(400).json({
+        error: `มีใบแจ้งหนี้สำหรับสัญญานี้และเดือน ${month_year} อยู่แล้ว`,
+      });
+    }
+
+    // 1. Fetch room details and calculate
     const [roomRows] = await connection.query(
-      `
-            SELECT r.base_rent, r.water_rate, r.elec_rate 
-            FROM rooms r
-            WHERE r.room_id = ?
-        `,
+      `SELECT r.base_rent, r.water_rate, r.elec_rate 
+       FROM rooms r
+       WHERE r.room_id = ?`,
       [room_id]
     );
     const room = roomRows[0];
 
     // Find Previous Reading
     const [prevRows] = await connection.query(
-      `
-            SELECT water_reading, elec_reading 
-            FROM meter_readings 
-            WHERE room_id = ? 
-            ORDER BY reading_date DESC LIMIT 1
-        `,
-      [room_id]
+      `SELECT water_reading, elec_reading 
+       FROM meter_readings 
+       WHERE room_id = ? AND month_year < ?
+       ORDER BY month_year DESC
+       LIMIT 1`,
+      [room_id, month_year]
     );
 
     const prevWater = prevRows.length > 0 ? prevRows[0].water_reading : 0;
@@ -151,21 +172,33 @@ exports.createInvoice = async (req, res) => {
     const elecCost = elecUsage * room.elec_rate;
     const totalAmount = waterCost + elecCost + parseFloat(room.base_rent);
 
-    // 2. Insert Meter Reading
+    // 2. Insert or Update Meter Reading (INSERT ON DUPLICATE KEY UPDATE)
     await connection.query(
-      `
-            INSERT INTO meter_readings (room_id, reading_date, water_reading, elec_reading, month_year, recorded_by)
-            VALUES (?, NOW(), ?, ?, ?, ?)
-        `,
-      [room_id, water_reading, elec_reading, month_year, recorded_by]
+      `INSERT INTO meter_readings 
+         (room_id, month_year, prev_water_reading, water_reading, prev_elec_reading, elec_reading, reading_date, recorded_by)
+       VALUES (?, ?, ?, ?, ?, ?, NOW(), ?)
+       ON DUPLICATE KEY UPDATE
+         prev_water_reading = VALUES(prev_water_reading),
+         water_reading = VALUES(water_reading),
+         prev_elec_reading = VALUES(prev_elec_reading),
+         elec_reading = VALUES(elec_reading),
+         reading_date = NOW(),
+         recorded_by = VALUES(recorded_by)`,
+      [
+        room_id,
+        month_year,
+        prevWater,
+        water_reading,
+        prevElec,
+        elec_reading,
+        recorded_by,
+      ]
     );
 
     // 3. Create Invoice
     const [invResult] = await connection.query(
-      `
-            INSERT INTO invoices (contract_id, month_year, total_amount, status, issue_date)
-            VALUES (?, ?, ?, 'pending', NOW())
-        `,
+      `INSERT INTO invoices (contract_id, month_year, total_amount, status, issue_date)
+       VALUES (?, ?, ?, 'pending', NOW())`,
       [contract_id, month_year, totalAmount]
     );
 
@@ -173,10 +206,14 @@ exports.createInvoice = async (req, res) => {
 
     // 4. Create Invoice Items
     const items = [
-      { desc: "Room Rent", amount: room.base_rent, type: "rent" },
-      { desc: `Water (${waterUsage} units)`, amount: waterCost, type: "water" },
+      { desc: "ค่าเช่าห้อง", amount: room.base_rent, type: "rent" },
       {
-        desc: `Electricity (${elecUsage} units)`,
+        desc: `ค่าน้ำ (${waterUsage} หน่วย)`,
+        amount: waterCost,
+        type: "water",
+      },
+      {
+        desc: `ค่าไฟ (${elecUsage} หน่วย)`,
         amount: elecCost,
         type: "electric",
       },
@@ -184,10 +221,8 @@ exports.createInvoice = async (req, res) => {
 
     for (const item of items) {
       await connection.query(
-        `
-                INSERT INTO invoice_items (invoice_id, description, amount, item_type)
-                VALUES (?, ?, ?, ?)
-            `,
+        `INSERT INTO invoice_items (invoice_id, description, amount, item_type)
+         VALUES (?, ?, ?, ?)`,
         [invoiceId, item.desc, item.amount, item.type]
       );
     }
@@ -204,6 +239,7 @@ exports.createInvoice = async (req, res) => {
     connection.release();
   }
 };
+
 // Get All Invoices
 exports.getAllInvoices = async (req, res) => {
   try {
@@ -236,20 +272,23 @@ exports.getInvoiceById = async (req, res) => {
   try {
     const { id } = req.params;
 
-    // 1. Get Invoice Details
+    // Get Invoice Details with meter readings from meter_readings table
     const [invoiceRows] = await db.query(
-      `
-      SELECT 
+      `SELECT 
         i.*,
         r.house_number,
+        r.room_id,
         t.full_name as tenant_name,
-        r.room_id
+        mr.prev_water_reading,
+        mr.water_reading as current_water_reading,
+        mr.prev_elec_reading,
+        mr.elec_reading as current_elec_reading
       FROM invoices i
       JOIN contracts c ON i.contract_id = c.contract_id
       JOIN rooms r ON c.room_id = r.room_id
       JOIN tenants t ON c.tenant_id = t.tenant_id
-      WHERE i.invoice_id = ?
-    `,
+      LEFT JOIN meter_readings mr ON r.room_id = mr.room_id AND i.month_year = mr.month_year
+      WHERE i.invoice_id = ?`,
       [id]
     );
 
@@ -259,7 +298,7 @@ exports.getInvoiceById = async (req, res) => {
 
     const invoice = invoiceRows[0];
 
-    // 2. Get Invoice Items
+    // Get Invoice Items
     const [itemRows] = await db.query(
       "SELECT * FROM invoice_items WHERE invoice_id = ?",
       [id]
@@ -271,5 +310,97 @@ exports.getInvoiceById = async (req, res) => {
   } catch (err) {
     console.error("Error fetching invoice:", err);
     res.status(500).json({ error: "Failed to fetch invoice details" });
+  }
+};
+
+// Delete Invoice
+exports.deleteInvoice = async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    const [invoiceRows] = await db.query(
+      "SELECT invoice_id FROM invoices WHERE invoice_id = ?",
+      [id]
+    );
+
+    if (invoiceRows.length === 0) {
+      return res.status(404).json({ error: "Invoice not found" });
+    }
+
+    await db.query("DELETE FROM invoices WHERE invoice_id = ?", [id]);
+
+    res.json({ message: "Invoice deleted successfully" });
+  } catch (err) {
+    console.error("Error deleting invoice:", err);
+    res.status(500).json({ error: "Failed to delete invoice" });
+  }
+};
+
+// Update Invoice Status (single)
+exports.updateInvoiceStatus = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { status } = req.body;
+
+    const validStatuses = ["pending", "paid", "overdue", "cancelled"];
+    if (!validStatuses.includes(status)) {
+      return res.status(400).json({ error: "Invalid status value" });
+    }
+
+    const [invoiceRows] = await db.query(
+      "SELECT invoice_id FROM invoices WHERE invoice_id = ?",
+      [id]
+    );
+
+    if (invoiceRows.length === 0) {
+      return res.status(404).json({ error: "Invoice not found" });
+    }
+
+    await db.query("UPDATE invoices SET status = ? WHERE invoice_id = ?", [
+      status,
+      id,
+    ]);
+
+    const [updatedRows] = await db.query(
+      "SELECT * FROM invoices WHERE invoice_id = ?",
+      [id]
+    );
+
+    res.json(updatedRows[0]);
+  } catch (err) {
+    console.error("Error updating invoice status:", err);
+    res.status(500).json({ error: "Failed to update invoice status" });
+  }
+};
+
+// Bulk Update Invoice Status
+exports.bulkUpdateStatus = async (req, res) => {
+  try {
+    const { invoice_ids, status } = req.body;
+
+    if (!Array.isArray(invoice_ids) || invoice_ids.length === 0) {
+      return res
+        .status(400)
+        .json({ error: "invoice_ids must be a non-empty array" });
+    }
+
+    const validStatuses = ["pending", "paid", "overdue", "cancelled"];
+    if (!validStatuses.includes(status)) {
+      return res.status(400).json({ error: "Invalid status value" });
+    }
+
+    const placeholders = invoice_ids.map(() => "?").join(",");
+    await db.query(
+      `UPDATE invoices SET status = ? WHERE invoice_id IN (${placeholders})`,
+      [status, ...invoice_ids]
+    );
+
+    res.json({
+      message: `Successfully updated ${invoice_ids.length} invoice(s) to status: ${status}`,
+      updated_count: invoice_ids.length,
+    });
+  } catch (err) {
+    console.error("Error bulk updating invoice status:", err);
+    res.status(500).json({ error: "Failed to bulk update invoice status" });
   }
 };
