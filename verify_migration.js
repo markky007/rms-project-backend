@@ -13,10 +13,10 @@ const db = require("./db");
 
     if (meterColsInInvoices.length === 0) {
       console.log(
-        "✓ Invoices table does NOT have meter reading columns (correct)\n"
+        "[OK] Invoices table does NOT have meter reading columns (correct)\n"
       );
     } else {
-      console.log("✗ WARNING: Invoices table still has meter reading columns:");
+      console.log("[FAIL] WARNING: Invoices table still has meter reading columns:");
       console.table(meterColsInInvoices);
     }
 
@@ -26,10 +26,10 @@ const db = require("./db");
     const prevCols = meterCols.filter((c) => c.Field.includes("prev_"));
 
     if (prevCols.length > 0) {
-      console.log("✓ meter_readings has prev columns:");
+      console.log("[OK] meter_readings has prev columns:");
       console.table(prevCols);
     } else {
-      console.log("✗ ERROR: meter_readings missing prev columns\n");
+      console.log("[FAIL] ERROR: meter_readings missing prev columns\n");
     }
 
     // Check unique constraint
@@ -39,9 +39,9 @@ const db = require("./db");
     );
 
     if (indexes.length > 0) {
-      console.log("✓ Unique constraint (room_id, month_year) exists\n");
+      console.log("[OK] Unique constraint (room_id, month_year) exists\n");
     } else {
-      console.log("✗ WARNING: Unique constraint missing\n");
+      console.log("[FAIL] WARNING: Unique constraint missing\n");
     }
 
     // Show sample data
@@ -65,9 +65,9 @@ const db = require("./db");
     `);
 
     if (duplicates.length === 0) {
-      console.log("✓ No duplicate records found\n");
+      console.log("[OK] No duplicate records found\n");
     } else {
-      console.log("✗ WARNING: Duplicate records found:");
+      console.log("[FAIL] WARNING: Duplicate records found:");
       console.table(duplicates);
     }
 

@@ -30,12 +30,12 @@ async function runMigrations() {
       );
       try {
         await db.query(statement);
-        console.log("✓ Success\n");
+        console.log("[OK] Success\n");
       } catch (err) {
         if (err.message.includes("check that column/key exists")) {
-          console.log("⚠ Already rolled back, skipping...\n");
+          console.log("[WARN] Already rolled back, skipping...\n");
         } else {
-          console.error(`✗ Failed: ${err.message}\n`);
+          console.error(`[FAIL] Failed: ${err.message}\n`);
         }
       }
     }
@@ -69,19 +69,19 @@ async function runMigrations() {
       console.log(preview + "...");
       try {
         await db.query(statement);
-        console.log("✓ Success\n");
+        console.log("[OK] Success\n");
       } catch (err) {
         if (err.message.includes("Duplicate column name")) {
-          console.log("⚠ Column already exists, skipping...\n");
+          console.log("[WARN] Column already exists, skipping...\n");
         } else if (err.message.includes("Duplicate key name")) {
-          console.log("⚠ Key already exists, skipping...\n");
+          console.log("[WARN] Key already exists, skipping...\n");
         } else {
-          console.error(`✗ Failed: ${err.message}\n`);
+          console.error(`[FAIL] Failed: ${err.message}\n`);
         }
       }
     }
 
-    console.log("\n✓ All migrations completed!\n");
+    console.log("\n[OK] All migrations completed!\n");
     process.exit(0);
   } catch (err) {
     console.error("Migration failed:", err);

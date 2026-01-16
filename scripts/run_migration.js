@@ -35,23 +35,23 @@ async function run() {
       console.log("Executing:", preview + "...");
       try {
         await connection.query(statement);
-        console.log("✓ Success");
+        console.log("[OK] Success");
       } catch (err) {
         // Ignore errors for ALTER TABLE ADD COLUMN if column already exists
         if (err.code === "ER_DUP_FIELDNAME") {
-          console.log("⚠ Column already exists, skipping...");
+          console.log("[WARN] Column already exists, skipping...");
         } else if (err.code === "ER_DUP_KEYNAME") {
-          console.log("⚠ Constraint already exists, skipping...");
+          console.log("[WARN] Constraint already exists, skipping...");
         } else {
           throw err;
         }
       }
     }
 
-    console.log("\n✅ Database migration completed successfully!");
+    console.log("\n[SUCCESS] Database migration completed successfully!");
     process.exit(0);
   } catch (err) {
-    console.error("❌ Failed to run migration:", err);
+    console.error("[ERROR] Failed to run migration:", err);
     process.exit(1);
   }
 }

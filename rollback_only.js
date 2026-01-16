@@ -8,12 +8,12 @@ const db = require("./db");
     console.log("Dropping index idx_invoice_room_month...");
     try {
       await db.query("ALTER TABLE invoices DROP INDEX idx_invoice_room_month");
-      console.log("✓ Index dropped\n");
+      console.log("[OK] Index dropped\n");
     } catch (err) {
       if (err.message.includes("check that it exists")) {
-        console.log("⚠ Index doesn't exist, skipping...\n");
+        console.log("[WARN] Index doesn't exist, skipping...\n");
       } else {
-        console.error(`✗ Error: ${err.message}\n`);
+        console.error(`[FAIL] Error: ${err.message}\n`);
       }
     }
 
@@ -29,17 +29,17 @@ const db = require("./db");
       console.log(`Dropping column ${col}...`);
       try {
         await db.query(`ALTER TABLE invoices DROP COLUMN ${col}`);
-        console.log(`✓ Column ${col} dropped\n`);
+        console.log(`[OK] Column ${col} dropped\n`);
       } catch (err) {
         if (err.message.includes("check that it exists")) {
-          console.log(`⚠ Column ${col} doesn't exist, skipping...\n`);
+          console.log(`[WARN] Column ${col} doesn't exist, skipping...\n`);
         } else {
-          console.error(`✗ Error: ${err.message}\n`);
+          console.error(`[FAIL] Error: ${err.message}\n`);
         }
       }
     }
 
-    console.log("✓ Rollback completed!\n");
+    console.log("[OK] Rollback completed!\n");
     process.exit(0);
   } catch (err) {
     console.error("Error:", err);

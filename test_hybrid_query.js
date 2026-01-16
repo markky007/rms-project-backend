@@ -26,10 +26,10 @@ const db = require("./db");
     );
 
     if (invoiceRows.length > 0) {
-      console.log("✓ Found in invoices:");
+      console.log("[OK] Found in invoices:");
       console.table(invoiceRows);
     } else {
-      console.log("⚠ Not found in invoices, trying meter_readings...");
+      console.log("[WARN] Not found in invoices, trying meter_readings...");
 
       // Step 2: Fallback to meter_readings
       const [meterRows] = await db.query(
@@ -44,14 +44,14 @@ const db = require("./db");
       );
 
       if (meterRows.length > 0) {
-        console.log("✓ Found in meter_readings:");
+        console.log("[OK] Found in meter_readings:");
         console.table(meterRows);
       } else {
-        console.log("⚠ No previous readings found (new room)");
+        console.log("[WARN] No previous readings found (new room)");
       }
     }
 
-    console.log("\n✓ Hybrid query approach working correctly!\n");
+    console.log("\n[OK] Hybrid query approach working correctly!\n");
     process.exit(0);
   } catch (err) {
     console.error("Error:", err);
