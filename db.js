@@ -67,10 +67,17 @@ const query = async (sql, params = []) => {
 
     // Return in a format similar to mysql2
     // result.rows contains the data
-    return [
-      result.rows,
-      { affectedRows: result.rowsAffected, insertId: result.lastInsertRowid },
-    ];
+    // Convert BigInt to Number for compatibility with query parameters
+    const insertId =
+      result.lastInsertRowid != null ? Number(result.lastInsertRowid) : null;
+
+    // For SELECT queries, first element is rows array
+    // For INSERT/UPDATE/DELETE, first element also needs insertId and affectedRows
+    const firstElement = result.rows;
+    firstElement.insertId = insertId;
+    firstElement.affectedRows = result.rowsAffected;
+
+    return [firstElement, { affectedRows: result.rowsAffected, insertId }];
   } catch (error) {
     console.error("Database query error:", error);
     console.error("SQL:", sql);
