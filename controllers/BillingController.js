@@ -116,10 +116,7 @@ exports.getLatestReadings = async (req, res) => {
 
 // Create Invoice and save Meter Reading
 exports.createInvoice = async (req, res) => {
-  const connection = await db.getConnection();
   try {
-    await connection.beginTransaction();
-
     const {
       contract_id,
       room_id,
@@ -130,7 +127,7 @@ exports.createInvoice = async (req, res) => {
     } = req.body;
 
     // Check for duplicate invoice (same contract and month_year)
-    const [existingInvoice] = await connection.query(
+    const [existingInvoice] = await db.query(
       `SELECT invoice_id 
        FROM invoices 
        WHERE contract_id = ? AND month_year = ?`,
@@ -138,14 +135,13 @@ exports.createInvoice = async (req, res) => {
     );
 
     if (existingInvoice.length > 0) {
-      await connection.rollback();
       return res.status(400).json({
-        error: `มีใบแจ้งหนี้สำหรับสัญญานี้และเดือน ${month_year} อยู่แล้ว`,
+        error: `Invoice already exists for this contract and month ${month_year}`,
       });
     }
 
     // 1. Fetch room details and calculate
-    const [roomRows] = await connection.query(
+    const [roomRows] = await db.query(
       `SELECT r.base_rent, r.water_rate, r.elec_rate 
        FROM rooms r
        WHERE r.room_id = ?`,
@@ -154,7 +150,7 @@ exports.createInvoice = async (req, res) => {
     const room = roomRows[0];
 
     // Find Previous Reading
-    const [prevRows] = await connection.query(
+    const [prevRows] = await db.query(
       `SELECT water_reading, elec_reading 
        FROM meter_readings 
        WHERE room_id = ? AND month_year < ?
@@ -172,18 +168,18 @@ exports.createInvoice = async (req, res) => {
     const elecCost = elecUsage * room.elec_rate;
     const totalAmount = waterCost + elecCost + parseFloat(room.base_rent);
 
-    // 2. Insert or Update Meter Reading (INSERT ON DUPLICATE KEY UPDATE)
-    await connection.query(
+    // 2. Insert or Update Meter Reading (SQLite UPSERT syntax)
+    await db.query(
       `INSERT INTO meter_readings 
          (room_id, month_year, prev_water_reading, water_reading, prev_elec_reading, elec_reading, reading_date, recorded_by)
-       VALUES (?, ?, ?, ?, ?, ?, NOW(), ?)
-       ON DUPLICATE KEY UPDATE
-         prev_water_reading = VALUES(prev_water_reading),
-         water_reading = VALUES(water_reading),
-         prev_elec_reading = VALUES(prev_elec_reading),
-         elec_reading = VALUES(elec_reading),
-         reading_date = NOW(),
-         recorded_by = VALUES(recorded_by)`,
+       VALUES (?, ?, ?, ?, ?, ?, datetime('now'), ?)
+       ON CONFLICT(room_id, month_year) DO UPDATE SET
+         prev_water_reading = excluded.prev_water_reading,
+         water_reading = excluded.water_reading,
+         prev_elec_reading = excluded.prev_elec_reading,
+         elec_reading = excluded.elec_reading,
+         reading_date = datetime('now'),
+         recorded_by = excluded.recorded_by`,
       [
         room_id,
         month_year,
@@ -196,9 +192,9 @@ exports.createInvoice = async (req, res) => {
     );
 
     // 3. Create Invoice
-    const [invResult] = await connection.query(
+    const [, invResult] = await db.query(
       `INSERT INTO invoices (contract_id, month_year, total_amount, status, issue_date)
-       VALUES (?, ?, ?, 'pending', NOW())`,
+       VALUES (?, ?, ?, 'pending', datetime('now'))`,
       [contract_id, month_year, totalAmount]
     );
 
@@ -206,37 +202,33 @@ exports.createInvoice = async (req, res) => {
 
     // 4. Create Invoice Items
     const items = [
-      { desc: "ค่าเช่าห้อง", amount: room.base_rent, type: "rent" },
+      { desc: "Room Rent", amount: room.base_rent, type: "rent" },
       {
-        desc: `ค่าน้ำ (${waterUsage} หน่วย)`,
+        desc: `Water (${waterUsage} units)`,
         amount: waterCost,
         type: "water",
       },
       {
-        desc: `ค่าไฟ (${elecUsage} หน่วย)`,
+        desc: `Electricity (${elecUsage} units)`,
         amount: elecCost,
         type: "electric",
       },
     ];
 
     for (const item of items) {
-      await connection.query(
+      await db.query(
         `INSERT INTO invoice_items (invoice_id, description, amount, item_type)
          VALUES (?, ?, ?, ?)`,
         [invoiceId, item.desc, item.amount, item.type]
       );
     }
 
-    await connection.commit();
     res
       .status(201)
       .json({ message: "Invoice created successfully", invoice_id: invoiceId });
   } catch (err) {
-    await connection.rollback();
     console.error(err);
     res.status(500).json({ error: "Failed to create invoice" });
-  } finally {
-    connection.release();
   }
 };
 
