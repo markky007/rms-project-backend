@@ -1,9 +1,10 @@
 const { createClient } = require("@libsql/client");
+const path = require("path");
 require("dotenv").config();
 
+// Use local SQLite file directly
 const db = createClient({
-  url: process.env.TURSO_DATABASE_URL,
-  authToken: process.env.TURSO_AUTH_TOKEN,
+  url: `file:${path.join(__dirname, "data.sqlite")}`,
 });
 
 // Helper function to expand array parameters for IN clauses
