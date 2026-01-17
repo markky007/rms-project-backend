@@ -1,5 +1,5 @@
 // Script to run rollback and new migration
-const db = require("./db");
+const db = require("../db");
 const fs = require("fs");
 const path = require("path");
 
@@ -9,7 +9,7 @@ async function runMigrations() {
 
     const rollbackSQL = fs.readFileSync(
       path.join(__dirname, "rollback_invoices_meter_readings.sql"),
-      "utf8"
+      "utf8",
     );
 
     const rollbackStatements = rollbackSQL
@@ -20,13 +20,13 @@ async function runMigrations() {
       .filter((s) => s.length > 10);
 
     console.log(
-      `Running ${rollbackStatements.length} rollback statements...\n`
+      `Running ${rollbackStatements.length} rollback statements...\n`,
     );
 
     for (let i = 0; i < rollbackStatements.length; i++) {
       const statement = rollbackStatements[i];
       console.log(
-        `Executing rollback ${i + 1}/${rollbackStatements.length}...`
+        `Executing rollback ${i + 1}/${rollbackStatements.length}...`,
       );
       try {
         await db.query(statement);
@@ -41,12 +41,12 @@ async function runMigrations() {
     }
 
     console.log(
-      "\n========== Step 2: Migrate meter_readings table ==========\n"
+      "\n========== Step 2: Migrate meter_readings table ==========\n",
     );
 
     const migrationSQL = fs.readFileSync(
       path.join(__dirname, "migration_meter_readings_prev_current.sql"),
-      "utf8"
+      "utf8",
     );
 
     const migrationStatements = migrationSQL
@@ -57,13 +57,13 @@ async function runMigrations() {
       .filter((s) => s.length > 10);
 
     console.log(
-      `Running ${migrationStatements.length} migration statements...\n`
+      `Running ${migrationStatements.length} migration statements...\n`,
     );
 
     for (let i = 0; i < migrationStatements.length; i++) {
       const statement = migrationStatements[i];
       console.log(
-        `Executing migration ${i + 1}/${migrationStatements.length}...`
+        `Executing migration ${i + 1}/${migrationStatements.length}...`,
       );
       const preview = statement.substring(0, 80).replace(/\s+/g, " ");
       console.log(preview + "...");

@@ -1,4 +1,4 @@
-const db = require("./db");
+const db = require("../db");
 
 // Test the hybrid query approach
 (async () => {
@@ -22,7 +22,7 @@ const db = require("./db");
         ORDER BY i.month_year DESC
         LIMIT 1
       `,
-      [room_id, month_year]
+      [room_id, month_year],
     );
 
     if (invoiceRows.length > 0) {
@@ -40,7 +40,7 @@ const db = require("./db");
           ORDER BY month_year DESC, reading_date DESC 
           LIMIT 1
         `,
-        [room_id, month_year]
+        [room_id, month_year],
       );
 
       if (meterRows.length > 0) {

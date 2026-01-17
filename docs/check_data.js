@@ -1,4 +1,4 @@
-const db = require("./db");
+const db = require("../db");
 (async () => {
   try {
     console.log("\n========== Checking meter_readings table ==========\n");

@@ -1,4 +1,4 @@
-const db = require("./db");
+const db = require("../db");
 
 (async () => {
   try {
@@ -8,15 +8,17 @@ const db = require("./db");
     console.log("1. Checking invoices table...");
     const [invoicesCols] = await db.query("DESCRIBE invoices");
     const meterColsInInvoices = invoicesCols.filter((c) =>
-      c.Field.includes("reading")
+      c.Field.includes("reading"),
     );
 
     if (meterColsInInvoices.length === 0) {
       console.log(
-        "[OK] Invoices table does NOT have meter reading columns (correct)\n"
+        "[OK] Invoices table does NOT have meter reading columns (correct)\n",
       );
     } else {
-      console.log("[FAIL] WARNING: Invoices table still has meter reading columns:");
+      console.log(
+        "[FAIL] WARNING: Invoices table still has meter reading columns:",
+      );
       console.table(meterColsInInvoices);
     }
 
@@ -35,7 +37,7 @@ const db = require("./db");
     // Check unique constraint
     console.log("3. Checking unique constraint...");
     const [indexes] = await db.query(
-      "SHOW INDEXES FROM meter_readings WHERE Key_name = 'unique_room_month'"
+      "SHOW INDEXES FROM meter_readings WHERE Key_name = 'unique_room_month'",
     );
 
     if (indexes.length > 0) {
