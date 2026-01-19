@@ -1,14 +1,30 @@
 const express = require("express");
 const router = express.Router();
 const billingController = require("../controllers/BillingController");
+const { authenticateToken } = require("../middleware/auth");
 
-router.post("/calculate", billingController.calculateBill);
-router.get("/latest-reading/:room_id", billingController.getLatestReadings);
-router.post("/create-invoice", billingController.createInvoice);
-router.patch("/bulk-status", billingController.bulkUpdateStatus); // Must be before /:id routes
+// Public routes
 router.get("/", billingController.getAllInvoices);
 router.get("/:id", billingController.getInvoiceById);
-router.delete("/:id", billingController.deleteInvoice);
-router.patch("/:id/status", billingController.updateInvoiceStatus);
+router.get("/latest-reading/:room_id", billingController.getLatestReadings);
+
+// Protected routes (require authentication)
+router.post("/calculate", authenticateToken, billingController.calculateBill);
+router.post(
+  "/create-invoice",
+  authenticateToken,
+  billingController.createInvoice,
+);
+router.patch(
+  "/bulk-status",
+  authenticateToken,
+  billingController.bulkUpdateStatus,
+);
+router.delete("/:id", authenticateToken, billingController.deleteInvoice);
+router.patch(
+  "/:id/status",
+  authenticateToken,
+  billingController.updateInvoiceStatus,
+);
 
 module.exports = router;

@@ -1,11 +1,12 @@
 const db = require("../db");
 const bcrypt = require("bcrypt");
+const jwt = require("jsonwebtoken");
 
 // Get all users
 exports.getAllUsers = async (req, res) => {
   try {
     const [rows] = await db.query(
-      "SELECT user_id, username, role, created_at FROM users ORDER BY user_id ASC"
+      "SELECT user_id, username, role, created_at FROM users ORDER BY user_id ASC",
     );
     res.json(rows);
   } catch (error) {
@@ -20,7 +21,7 @@ exports.getUserById = async (req, res) => {
     const { id } = req.params;
     const [rows] = await db.query(
       "SELECT user_id, username, role, created_at FROM users WHERE user_id = ?",
-      [id]
+      [id],
     );
 
     if (rows.length === 0) {
@@ -52,7 +53,7 @@ exports.createUser = async (req, res) => {
 
     const [result] = await db.query(
       "INSERT INTO users (username, password_hash, role) VALUES (?, ?, ?)",
-      [username, password_hash, role || "staff"]
+      [username, password_hash, role || "staff"],
     );
 
     res.status(201).json({
@@ -104,7 +105,7 @@ exports.updateUser = async (req, res) => {
 
     const [result] = await db.query(
       `UPDATE users SET ${updateFields.join(", ")} WHERE user_id = ?`,
-      values
+      values,
     );
 
     if (result.affectedRows === 0) {
@@ -154,7 +155,7 @@ exports.login = async (req, res) => {
 
     const [rows] = await db.query(
       "SELECT user_id, username, password_hash, role FROM users WHERE username = ?",
-      [username]
+      [username],
     );
 
     if (rows.length === 0) {
@@ -168,9 +169,19 @@ exports.login = async (req, res) => {
       return res.status(401).json({ error: "Invalid credentials" });
     }
 
-    // In production, generate JWT token here
+    // Generate JWT token
+    const token = jwt.sign(
+      {
+        user_id: user.user_id,
+        username: user.username,
+        role: user.role,
+      },
+      process.env.JWT_SECRET,
+      { expiresIn: process.env.JWT_EXPIRES_IN || "24h" },
+    );
+
     res.json({
-      token: "dummy-token", // Replace with actual JWT
+      token,
       user: {
         user_id: user.user_id,
         username: user.username,

@@ -2,15 +2,22 @@ const express = require("express");
 const router = express.Router();
 const paymentController = require("../controllers/PaymentController");
 const upload = require("../middleware/upload");
+const { authenticateToken } = require("../middleware/auth");
 
-router.get("/", paymentController.getAllPayments);
-router.get("/:id", paymentController.getPaymentById);
-router.post("/", paymentController.createPayment);
+// All payment routes require authentication
+router.get("/", authenticateToken, paymentController.getAllPayments);
+router.get("/:id", authenticateToken, paymentController.getPaymentById);
+router.post("/", authenticateToken, paymentController.createPayment);
 router.post(
   "/:id/slip",
+  authenticateToken,
   upload.single("slip"),
-  paymentController.uploadPaymentSlip
+  paymentController.uploadPaymentSlip,
 );
-router.patch("/:id/approve", paymentController.approvePayment);
+router.patch(
+  "/:id/approve",
+  authenticateToken,
+  paymentController.approvePayment,
+);
 
 module.exports = router;

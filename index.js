@@ -17,7 +17,14 @@ const maintenanceRoutes = require("./routes/maintenanceRoutes");
 
 const port = process.env.PORT || 3000;
 
-app.use(cors());
+// CORS Configuration
+const corsOptions = {
+  origin: process.env.CORS_ORIGIN || "*",
+  methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
+  allowedHeaders: ["Content-Type", "Authorization"],
+  credentials: true,
+};
+app.use(cors(corsOptions));
 app.use(express.json());
 
 // Serve static files from uploads directory
