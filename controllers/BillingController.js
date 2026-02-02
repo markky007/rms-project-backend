@@ -12,7 +12,7 @@ exports.calculateBill = async (req, res) => {
             FROM rooms r
             WHERE r.room_id = ? OR r.house_number = ?
         `,
-      [room_id, room_id]
+      [room_id, room_id],
     );
 
     if (roomRows.length === 0)
@@ -29,7 +29,7 @@ exports.calculateBill = async (req, res) => {
        WHERE room_id = ? AND month_year < ?
        ORDER BY month_year DESC
        LIMIT 1`,
-      [room_id, month_year]
+      [room_id, month_year],
     );
 
     if (prevRows.length > 0) {
@@ -131,7 +131,7 @@ exports.createInvoice = async (req, res) => {
       `SELECT invoice_id 
        FROM invoices 
        WHERE contract_id = ? AND month_year = ?`,
-      [contract_id, month_year]
+      [contract_id, month_year],
     );
 
     if (existingInvoice.length > 0) {
@@ -145,7 +145,7 @@ exports.createInvoice = async (req, res) => {
       `SELECT r.base_rent, r.water_rate, r.elec_rate 
        FROM rooms r
        WHERE r.room_id = ?`,
-      [room_id]
+      [room_id],
     );
     const room = roomRows[0];
 
@@ -156,7 +156,7 @@ exports.createInvoice = async (req, res) => {
        WHERE room_id = ? AND month_year < ?
        ORDER BY month_year DESC
        LIMIT 1`,
-      [room_id, month_year]
+      [room_id, month_year],
     );
 
     const prevWater = prevRows.length > 0 ? prevRows[0].water_reading : 0;
@@ -188,17 +188,17 @@ exports.createInvoice = async (req, res) => {
         prevElec,
         elec_reading,
         recorded_by,
-      ]
+      ],
     );
 
     // 3. Create Invoice
-    const [, invResult] = await db.query(
+    const [, invMeta] = await db.query(
       `INSERT INTO invoices (contract_id, month_year, total_amount, status, issue_date)
        VALUES (?, ?, ?, 'pending', datetime('now'))`,
-      [contract_id, month_year, totalAmount]
+      [contract_id, month_year, totalAmount],
     );
 
-    const invoiceId = invResult.insertId;
+    const invoiceId = invMeta.insertId;
 
     // 4. Create Invoice Items
     const items = [
@@ -219,7 +219,7 @@ exports.createInvoice = async (req, res) => {
       await db.query(
         `INSERT INTO invoice_items (invoice_id, description, amount, item_type)
          VALUES (?, ?, ?, ?)`,
-        [invoiceId, item.desc, item.amount, item.type]
+        [invoiceId, item.desc, item.amount, item.type],
       );
     }
 
@@ -281,7 +281,7 @@ exports.getInvoiceById = async (req, res) => {
       JOIN tenants t ON c.tenant_id = t.tenant_id
       LEFT JOIN meter_readings mr ON r.room_id = mr.room_id AND i.month_year = mr.month_year
       WHERE i.invoice_id = ?`,
-      [id]
+      [id],
     );
 
     if (invoiceRows.length === 0) {
@@ -293,7 +293,7 @@ exports.getInvoiceById = async (req, res) => {
     // Get Invoice Items
     const [itemRows] = await db.query(
       "SELECT * FROM invoice_items WHERE invoice_id = ?",
-      [id]
+      [id],
     );
 
     invoice.items = itemRows;
@@ -312,7 +312,7 @@ exports.deleteInvoice = async (req, res) => {
 
     const [invoiceRows] = await db.query(
       "SELECT invoice_id FROM invoices WHERE invoice_id = ?",
-      [id]
+      [id],
     );
 
     if (invoiceRows.length === 0) {
@@ -341,7 +341,7 @@ exports.updateInvoiceStatus = async (req, res) => {
 
     const [invoiceRows] = await db.query(
       "SELECT invoice_id FROM invoices WHERE invoice_id = ?",
-      [id]
+      [id],
     );
 
     if (invoiceRows.length === 0) {
@@ -355,7 +355,7 @@ exports.updateInvoiceStatus = async (req, res) => {
 
     const [updatedRows] = await db.query(
       "SELECT * FROM invoices WHERE invoice_id = ?",
-      [id]
+      [id],
     );
 
     res.json(updatedRows[0]);
@@ -384,7 +384,7 @@ exports.bulkUpdateStatus = async (req, res) => {
     const placeholders = invoice_ids.map(() => "?").join(",");
     await db.query(
       `UPDATE invoices SET status = ? WHERE invoice_id IN (${placeholders})`,
-      [status, ...invoice_ids]
+      [status, ...invoice_ids],
     );
 
     res.json({
