@@ -23,6 +23,7 @@ const allowedOrigins = [
   "http://localhost:9000",
   "http://localhost:5173",
   "http://localhost:3000",
+  "https://house-management-system.pages.dev",
 ].filter(Boolean);
 
 const corsOptions = {
