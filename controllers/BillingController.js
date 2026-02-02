@@ -168,28 +168,46 @@ exports.createInvoice = async (req, res) => {
     const elecCost = elecUsage * room.elec_rate;
     const totalAmount = waterCost + elecCost + parseFloat(room.base_rent);
 
-    // 2. Insert or Update Meter Reading (SQLite UPSERT syntax)
-    await db.query(
-      `INSERT INTO meter_readings 
-         (room_id, month_year, prev_water_reading, water_reading, prev_elec_reading, elec_reading, reading_date, recorded_by)
-       VALUES (?, ?, ?, ?, ?, ?, datetime('now'), ?)
-       ON CONFLICT(room_id, month_year) DO UPDATE SET
-         prev_water_reading = excluded.prev_water_reading,
-         water_reading = excluded.water_reading,
-         prev_elec_reading = excluded.prev_elec_reading,
-         elec_reading = excluded.elec_reading,
-         reading_date = datetime('now'),
-         recorded_by = excluded.recorded_by`,
-      [
-        room_id,
-        month_year,
-        prevWater,
-        water_reading,
-        prevElec,
-        elec_reading,
-        recorded_by,
-      ],
+    // 2. Check if meter reading exists for this month
+    const [existingReading] = await db.query(
+      `SELECT reading_id FROM meter_readings WHERE room_id = ? AND month_year = ?`,
+      [room_id, month_year],
     );
+
+    if (existingReading.length > 0) {
+      // Update existing reading
+      await db.query(
+        `UPDATE meter_readings 
+         SET prev_water_reading = ?, water_reading = ?, prev_elec_reading = ?, 
+             elec_reading = ?, reading_date = datetime('now'), recorded_by = ?
+         WHERE room_id = ? AND month_year = ?`,
+        [
+          prevWater,
+          water_reading,
+          prevElec,
+          elec_reading,
+          recorded_by,
+          room_id,
+          month_year,
+        ],
+      );
+    } else {
+      // Insert new reading
+      await db.query(
+        `INSERT INTO meter_readings 
+         (room_id, month_year, prev_water_reading, water_reading, prev_elec_reading, elec_reading, reading_date, recorded_by)
+         VALUES (?, ?, ?, ?, ?, ?, datetime('now'), ?)`,
+        [
+          room_id,
+          month_year,
+          prevWater,
+          water_reading,
+          prevElec,
+          elec_reading,
+          recorded_by,
+        ],
+      );
+    }
 
     // 3. Create Invoice
     const [, invMeta] = await db.query(
