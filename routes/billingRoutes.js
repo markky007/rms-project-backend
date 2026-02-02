@@ -26,5 +26,10 @@ router.patch(
   authenticateToken,
   billingController.updateInvoiceStatus,
 );
+router.patch(
+  "/meter-reading/:reading_id",
+  authenticateToken,
+  billingController.updateMeterReading,
+);
 
 module.exports = router;

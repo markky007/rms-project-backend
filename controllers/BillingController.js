@@ -288,7 +288,11 @@ exports.getInvoiceById = async (req, res) => {
         i.*,
         r.house_number,
         r.room_id,
+        r.water_rate,
+        r.elec_rate,
+        r.base_rent,
         t.full_name as tenant_name,
+        mr.reading_id,
         mr.prev_water_reading,
         mr.water_reading as current_water_reading,
         mr.prev_elec_reading,
@@ -412,5 +416,129 @@ exports.bulkUpdateStatus = async (req, res) => {
   } catch (err) {
     console.error("Error bulk updating invoice status:", err);
     res.status(500).json({ error: "Failed to bulk update invoice status" });
+  }
+};
+
+// Update Meter Reading and Recalculate Invoice
+exports.updateMeterReading = async (req, res) => {
+  try {
+    const { reading_id } = req.params;
+    const { water_reading, elec_reading, recorded_by } = req.body;
+
+    // 1. Get existing meter reading
+    const [readingRows] = await db.query(
+      `SELECT mr.*, r.base_rent, r.water_rate, r.elec_rate, r.room_id
+       FROM meter_readings mr
+       JOIN rooms r ON mr.room_id = r.room_id
+       WHERE mr.reading_id = ?`,
+      [reading_id],
+    );
+
+    if (readingRows.length === 0) {
+      return res.status(404).json({ error: "Meter reading not found" });
+    }
+
+    const reading = readingRows[0];
+    const { room_id, month_year } = reading;
+
+    // 2. Get previous month's reading for validation
+    const [prevRows] = await db.query(
+      `SELECT water_reading, elec_reading 
+       FROM meter_readings 
+       WHERE room_id = ? AND month_year < ?
+       ORDER BY month_year DESC
+       LIMIT 1`,
+      [room_id, month_year],
+    );
+
+    const prevWater = prevRows.length > 0 ? prevRows[0].water_reading : 0;
+    const prevElec = prevRows.length > 0 ? prevRows[0].elec_reading : 0;
+
+    // 3. Validation
+    if (water_reading < prevWater || elec_reading < prevElec) {
+      return res.status(400).json({
+        error: "Current reading cannot be less than previous reading",
+        prevWater,
+        prevElec,
+      });
+    }
+
+    // 4. Calculate new usage and costs
+    const waterUsage = water_reading - prevWater;
+    const elecUsage = elec_reading - prevElec;
+    const waterCost = waterUsage * reading.water_rate;
+    const elecCost = elecUsage * reading.elec_rate;
+    const totalAmount = waterCost + elecCost + parseFloat(reading.base_rent);
+
+    // 5. Update meter reading
+    await db.query(
+      `UPDATE meter_readings 
+       SET prev_water_reading = ?, water_reading = ?, 
+           prev_elec_reading = ?, elec_reading = ?, 
+           reading_date = datetime('now'), recorded_by = ?
+       WHERE reading_id = ?`,
+      [
+        prevWater,
+        water_reading,
+        prevElec,
+        elec_reading,
+        recorded_by,
+        reading_id,
+      ],
+    );
+
+    // 6. Find associated invoice
+    const [invoiceRows] = await db.query(
+      `SELECT i.invoice_id, i.contract_id 
+       FROM invoices i
+       JOIN contracts c ON i.contract_id = c.contract_id
+       WHERE c.room_id = ? AND i.month_year = ?`,
+      [room_id, month_year],
+    );
+
+    if (invoiceRows.length > 0) {
+      const invoice_id = invoiceRows[0].invoice_id;
+
+      // 7. Update invoice total
+      await db.query(
+        `UPDATE invoices SET total_amount = ? WHERE invoice_id = ?`,
+        [totalAmount, invoice_id],
+      );
+
+      // 8. Update invoice items
+      await db.query(
+        `UPDATE invoice_items 
+         SET amount = ? 
+         WHERE invoice_id = ? AND item_type = 'water'`,
+        [waterCost, invoice_id],
+      );
+
+      await db.query(
+        `UPDATE invoice_items 
+         SET amount = ?, description = ? 
+         WHERE invoice_id = ? AND item_type = 'electric'`,
+        [elecCost, `Electricity (${elecUsage} units)`, invoice_id],
+      );
+
+      await db.query(
+        `UPDATE invoice_items 
+         SET description = ? 
+         WHERE invoice_id = ? AND item_type = 'water'`,
+        [`Water (${waterUsage} units)`, invoice_id],
+      );
+    }
+
+    res.json({
+      message: "Meter reading updated successfully",
+      reading_id,
+      updated_values: {
+        water_reading,
+        elec_reading,
+        total_amount: totalAmount,
+      },
+    });
+  } catch (err) {
+    console.error("Error updating meter reading:", err);
+    res.status(500).json({ error: "Failed to update meter reading" });
   }
 };
