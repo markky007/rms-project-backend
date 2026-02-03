@@ -31,5 +31,10 @@ router.patch(
   authenticateToken,
   billingController.updateMeterReading,
 );
+router.post(
+  "/:id/apply-late-fee",
+  authenticateToken,
+  billingController.applyLateFee,
+);
 
 module.exports = router;

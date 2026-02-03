@@ -542,3 +542,113 @@ exports.updateMeterReading = async (req, res) => {
     res.status(500).json({ error: "Failed to update meter reading" });
   }
 };
+
+// Apply Late Fee - Create adjusted invoice with late fee
+exports.applyLateFee = async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    // 1. Get original invoice details with all items
+    const [invoiceRows] = await db.query(
+      `SELECT 
+        i.*,
+        r.house_number,
+        r.room_id,
+        t.full_name as tenant_name
+      FROM invoices i
+      JOIN contracts c ON i.contract_id = c.contract_id
+      JOIN rooms r ON c.room_id = r.room_id
+      JOIN tenants t ON c.tenant_id = t.tenant_id
+      WHERE i.invoice_id = ?`,
+      [id],
+    );
+
+    if (invoiceRows.length === 0) {
+      return res.status(404).json({ error: "Invoice not found" });
+    }
+
+    const invoice = invoiceRows[0];
+
+    // 2. Check if invoice is pending
+    if (invoice.status !== "pending") {
+      return res.status(400).json({
+        error: "Late fee can only be applied to pending invoices",
+      });
+    }
+
+    // 3. Calculate late fee
+    // Parse month_year (format: "YYYY-MM")
+    const [year, month] = invoice.month_year.split("-");
+    const dueDate = new Date(parseInt(year), parseInt(month) - 1, 5); // 5th of the month
+    const currentDate = new Date();
+
+    // Check if current date is past due date
+    if (currentDate <= dueDate) {
+      return res.status(400).json({
+        error: "Invoice is not yet overdue (due date is 5th of the month)",
+      });
+    }
+
+    // Calculate days late
+    const timeDiff = currentDate.getTime() - dueDate.getTime();
+    const daysLate = Math.ceil(timeDiff / (1000 * 3600 * 24));
+    const lateFee = daysLate * 50; // 50 baht per day
+
+    // 4. Get original invoice items
+    const [itemRows] = await db.query(
+      "SELECT * FROM invoice_items WHERE invoice_id = ?",
+      [id],
+    );
+
+    // 5. Calculate new total
+    const newTotalAmount = parseFloat(invoice.total_amount) + lateFee;
+
+    // 6. Create new invoice with late fee
+    const [, newInvoiceMeta] = await db.query(
+      `INSERT INTO invoices (contract_id, month_year, total_amount, status, issue_date)
+       VALUES (?, ?, ?, 'pending', datetime('now'))`,
+      [invoice.contract_id, invoice.month_year, newTotalAmount],
+    );
+
+    const newInvoiceId = newInvoiceMeta.insertId;
+
+    // 7. Copy all original invoice items to new invoice
+    for (const item of itemRows) {
+      await db.query(
+        `INSERT INTO invoice_items (invoice_id, description, amount, item_type)
+         VALUES (?, ?, ?, ?)`,
+        [newInvoiceId, item.description, item.amount, item.item_type],
+      );
+    }
+
+    // 8. Add late fee item
+    await db.query(
+      `INSERT INTO invoice_items (invoice_id, description, amount, item_type)
+       VALUES (?, ?, ?, ?)`,
+      [
+        newInvoiceId,
+        `ค่าปรับชำระล่าช้า (${daysLate} วัน × 50 บาท)`,
+        lateFee,
+        "late_fee",
+      ],
+    );
+
+    // 9. Update original invoice status to cancelled
+    await db.query(
+      "UPDATE invoices SET status = 'cancelled' WHERE invoice_id = ?",
+      [id],
+    );
+
+    res.status(201).json({
+      message: "Late fee applied successfully",
+      new_invoice_id: newInvoiceId,
+      days_late: daysLate,
+      late_fee: lateFee,
+      new_total: newTotalAmount,
+      original_invoice_id: id,
+    });
+  } catch (err) {
+    console.error("Error applying late fee:", err);
+    res.status(500).json({ error: "Failed to apply late fee" });
+  }
+};
