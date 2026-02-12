@@ -2,10 +2,24 @@ const { createClient } = require("@libsql/client");
 const path = require("path");
 require("dotenv").config();
 
-// Use local SQLite file directly
-const db = createClient({
-  url: `file:${path.join(__dirname, "data.sqlite")}`,
-});
+// Database configuration
+const dbSource = process.env.DB_SOURCE || "local";
+let dbConfig;
+
+if (dbSource === "turso") {
+  console.log("Using Turso database...");
+  dbConfig = {
+    url: process.env.TURSO_DATABASE_URL,
+    authToken: process.env.TURSO_AUTH_TOKEN,
+  };
+} else {
+  console.log("Using local SQLite database...");
+  dbConfig = {
+    url: `file:${path.join(__dirname, "data.sqlite")}`,
+  };
+}
+
+const db = createClient(dbConfig);
 
 // Helper function to expand array parameters for IN clauses
 // MySQL2 allows [array] for IN (?) but libsql doesn't
@@ -57,7 +71,7 @@ const query = async (sql, params = []) => {
     // Expand array parameters for IN clauses
     const { sql: expandedSql, params: expandedParams } = expandArrayParams(
       convertedSql,
-      params
+      params,
     );
 
     const result = await db.execute({
