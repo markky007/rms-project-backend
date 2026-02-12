@@ -579,13 +579,18 @@ exports.applyLateFee = async (req, res) => {
     // 3. Calculate late fee
     // Parse month_year (format: "YYYY-MM")
     const [year, month] = invoice.month_year.split("-");
-    const dueDate = new Date(parseInt(year), parseInt(month) - 1, 5); // 5th of the month
+    // Change calculation to start from next month
+    // For December (12), parseInt(12) creates date in January of next year
+    const dueDate = new Date(parseInt(year), parseInt(month), 5); // 5th of next month
+
+    // Reset time components to compare dates only
     const currentDate = new Date();
+    currentDate.setHours(0, 0, 0, 0);
 
     // Check if current date is past due date
     if (currentDate <= dueDate) {
       return res.status(400).json({
-        error: "Invoice is not yet overdue (due date is 5th of the month)",
+        error: "Invoice is not yet overdue (due date is 5th of the next month)",
       });
     }
 
