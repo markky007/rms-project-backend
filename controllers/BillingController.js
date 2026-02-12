@@ -241,6 +241,7 @@ exports.createInvoice = async (req, res) => {
       water_reading,
       elec_reading,
       recorded_by,
+      deposit_amount, // New field
     } = req.body;
 
     // Check for duplicate invoice (same contract and month_year)
@@ -314,7 +315,13 @@ exports.createInvoice = async (req, res) => {
       }
     }
 
-    const totalAmount = waterCost + elecCost + totalRent;
+    let totalAmount = waterCost + elecCost + totalRent;
+
+    // Add deposit amount if present
+    const deposit = deposit_amount ? parseFloat(deposit_amount) : 0;
+    if (deposit > 0) {
+      totalAmount += deposit;
+    }
 
     // 2. Check if meter reading exists for this month
     const [existingReading] = await db.query(
@@ -380,6 +387,14 @@ exports.createInvoice = async (req, res) => {
         type: "electric",
       },
     ];
+
+    if (deposit > 0) {
+      items.push({
+        desc: "ค่าค้างชำระมัดจำ",
+        amount: deposit,
+        type: "deposit",
+      });
+    }
 
     for (const item of items) {
       await db.query(
