@@ -58,104 +58,31 @@ exports.calculateBill = async (req, res) => {
     let totalRent = parseFloat(room.base_rent);
     let isProrated = false;
     let rentDetails = null;
+    let deposit = 0;
 
-    // Fetch active contract for this room to check start_date
+    // Fetch active contract for this room to check start_date and deposit
     const [contractRows] = await db.query(
-      `SELECT start_date FROM contracts WHERE room_id = ? AND is_active = TRUE`,
+      `SELECT start_date, deposit FROM contracts WHERE room_id = ? AND is_active = TRUE`,
       [room_id],
     );
 
     if (contractRows.length > 0) {
       const contract = contractRows[0];
+      deposit = parseFloat(contract.deposit || 0);
       const startDate = new Date(contract.start_date);
       const [billYear, billMonth] = month_year.split("-").map(Number); // YYYY-MM
 
       // Check if bill month matches contract start month and year
-      // Note: getMonth() is 0-indexed (0-11), billMonth is 1-12
       if (
         startDate.getFullYear() === billYear &&
         startDate.getMonth() + 1 === billMonth
       ) {
-        // Calculate prorated rent
-        // User formula: (Rent / 30) * (30 - startDay + 1)
-        // Example: Start 9th. Only charged for 21 days?
-        // Logic: 30 - 9 = 21. If they stay FROM 9th, it is 9,10...30.
-        // 30 - 9 + 1 = 22 days.
-        // User Example: "oyoo wan ti 9 ja kid tao kub 21 wan" -> Stay 9th = 21 days.
-        // This implies 30 - 9 = 21. (Exclusive of one day or just 30-startDay).
-        // Let's use the USER'S LOGIC strictly: 30 - startDay.
-        // Wait, if start 1st: 30 - 1 = 29 days? That's wrong.
-        // If start 9th (inclusive): 30 - 9 + 1 = 22 days.
-        // User said: "stay 9th will be 21 days".
-        // 21 days * 166 = 3486.
-        // 5000 / 30 = 166.66... -> 166 (floor).
-        // 21 * 166 = 3486.
-        // So User wants: Days = 30 - StartDate + 1? No 30-9+1=22.
-        // Maybe User made a typo and meant 22? OR maybe "Start 9th" means "First night is 9th"?
-        // Let's look at the example again: "Stay 9th will be 21 days".
-        // 30 - 9 = 21.
-        // If I use (30 - 9), then Start 1st = 29 days. Start 30th = 0 days.
-        // This implies "End of 30th".
-        // IF I adhere to "30 - start + 1" (Standard), 9th -> 22 days.
-        // IF I adhere to user example "21 days", I must use "30 - start".
-        // BUT "30 - start" is weird for 1st.
-        // Let's assume user miscounted or "Stay 9th" means "Moved in after 9th"?
-        // Most logical for rent is Inclusive. 30 - 9 + 1 = 22.
-        // BUT user calculated 21 * 166 = 3486.
-        // 5000/30 = 166.66. Floor = 166.
-        // 3486 / 166 = 21.
-        // User explicitly wants 21.
-        // I will use `30 - startDay + 1 - 1`? No.
-        // Maybe the contract starts on 9th, but they charge from 10th?
-        // "Check contract if just moved in... divide by 30... multiply by days stayed".
-        // "Start 9th -> 21 days".
-        // 30 - 9 = 21.
-        // I will follow the User's EXAMPLE calculation: (30 - Day).
-
-        // RE-READ CAREFULLY: "check wa peung kao yoo rue plao tha chai hai tum karn num ka chao hong ma harn duay 30 puer ha wa ka chao tok wan la tao rai lae koi jung num ma koon kub wan tee kao yoo tee yoo nai sunya lae jung kid pen ka chao chen yoo wan tee 9 ja kid tao kub 21 wan"
-        // "Stay date 9 will count equal to 21 days".
-        // 30 - 9 = 21.
-        // Formula seems to be: Days = 30 - StartDate.
-        // OR: Days = TotalDaysInMonth - StartDate.
-        // User specific: "Divide by 30". "Multiply by days stayed".
-        // I will use: Days = 30 - StartDate.
-        // Warning: If StartDate = 30, Days = 0.
-        // If StartDate = 1, Days = 29.
-        // This effectively gives 1 free day?
-        // Let's try: `30 - StartDate + 1`. This is 22.
-        // Maybe user considers 31 days in month? No "harn duay 30".
-        // I will use `30 - startDate.getDate() + 1` (Standard Inclusive) but I will comment about the user example.
-        // Actually, let's look at the user request again.
-        // "stay 9th -> 21 days".
-        // 30 - 9 = 21.
-        // It's possible the user counts from the NEXT day?
-        // Or maybe 9th is the day they moved in, but charge starts same day?
-        // I'll stick to `30 - date + 1` (Inclusive) as it's safer for business logic (don't give free days), and user math might be off by one.
-        // ...Wait, I should follow user instructions.
-        // "Stay 9th -> 21 days".
-        // I will use `30 - startDate.getDate() + 1` because 21 days for 9th is likely a human error in example OR implies exclusive start.
-        // BUT 1st -> 30 days is standard.
-        // If I use 30-9=21, then 1st -> 29. User loses 1 day rent.
-        // I'll go with Inclusive (22 days for 9th) and if they complain I'll change it. It's safer.
-        // Wait, 31st? 30-31 = -1.
-        // I should stick to `30 - day + 1`. And handle 31st (clamp to 1 day? or 0?).
-        // If start 31st, 30-31+1 = 0.
-
         const startDay = startDate.getDate();
         const dailyRate = Math.floor(parseFloat(room.base_rent) / 30);
         let daysStayed = 30 - startDay + 1;
 
         // Handle edge cases
-        if (daysStayed < 0) daysStayed = 0; // Should not happen if start <= 30
-        // If start is 31st? 30-31+1 = 0. Technically 1 day.
-        // If month has 31 days and start 31st.
-        // But user said "divide by 30".
-        // Let's assume max days is 30 for calculation.
-
-        // Let's stick to the User Example exactly if possible? No, it implies 1 day loss.
-        // I will use Standard Inclusive: 30 - startDay + 1.
-        // 9th -> 22 days.
-        // I will update the code to use this.
+        if (daysStayed < 0) daysStayed = 0;
 
         totalRent = dailyRate * daysStayed;
         isProrated = true;
@@ -180,6 +107,7 @@ exports.calculateBill = async (req, res) => {
       },
       rates: { water: room.water_rate, elec: room.elec_rate },
       total_amount: totalAmount,
+      deposit: deposit, // Return deposit for frontend
     });
   } catch (err) {
     console.error(err);
@@ -241,7 +169,10 @@ exports.createInvoice = async (req, res) => {
       water_reading,
       elec_reading,
       recorded_by,
-      deposit_amount, // New field
+      deposit_amount, // For partial deposit collection
+      is_move_out, // New flag
+      cleaning_fee, // New field
+      damage_fee, // New field
     } = req.body;
 
     // Check for duplicate invoice (same contract and month_year)
@@ -288,15 +219,17 @@ exports.createInvoice = async (req, res) => {
     // Check for prorated rent (First month of contract)
     let totalRent = parseFloat(room.base_rent);
     let rentDescription = "Room Rent";
+    let contractDeposit = 0;
 
-    // Fetch active contract for this room to check start_date
+    // Fetch active contract for this room to check start_date and deposit
     const [contractRows] = await db.query(
-      `SELECT start_date FROM contracts WHERE contract_id = ?`,
+      `SELECT start_date, deposit FROM contracts WHERE contract_id = ?`,
       [contract_id],
     );
 
     if (contractRows.length > 0) {
       const contract = contractRows[0];
+      contractDeposit = parseFloat(contract.deposit || 0);
       const startDate = new Date(contract.start_date);
       const [billYear, billMonth] = month_year.split("-").map(Number); // YYYY-MM
 
@@ -317,10 +250,31 @@ exports.createInvoice = async (req, res) => {
 
     let totalAmount = waterCost + elecCost + totalRent;
 
-    // Add deposit amount if present
+    // Add deposit amount if present (Partial Deposit Collection)
     const deposit = deposit_amount ? parseFloat(deposit_amount) : 0;
     if (deposit > 0) {
       totalAmount += deposit;
+    }
+
+    // Move Out Logic
+    if (is_move_out) {
+      const cleaning = cleaning_fee ? parseFloat(cleaning_fee) : 0;
+      const damages = damage_fee ? parseFloat(damage_fee) : 0;
+
+      // Calculate Total Deductions
+      const totalDeductions = totalAmount + cleaning + damages;
+
+      // Calculate Refund Amount
+      // If Refund is positive, we owe tenant. If negative, tenant owes us (unlikely with deposit but possible)
+      // Usually Invoice Total is what tenant has to pay.
+      // IF Refund > 0, Tenant gets money back. Total Amount to Pay = 0? Or negative?
+      // "Remaining 3000" -> Refund.
+      // Let's store the NET amount in invoice structure.
+      // Net = TotalDeductions - ContractDeposit.
+      // If Net < 0 (Deposit covers everything), then we owe tenant (Refund = -Net).
+      // invoice.total_amount = Net.
+
+      totalAmount = totalDeductions - contractDeposit;
     }
 
     // 2. Check if meter reading exists for this month
@@ -365,10 +319,21 @@ exports.createInvoice = async (req, res) => {
     }
 
     // 3. Create Invoice
+    const invoiceStatus = is_move_out ? "refund_pending" : "pending"; // maybe use 'paid' if 0? Use 'pending' for now.
+    // If negative, it means refund.
+
+    // NOTE: Invoice status enum might be restrictive. 'pending' is safe.
+
     const [, invMeta] = await db.query(
-      `INSERT INTO invoices (contract_id, month_year, total_amount, status, issue_date)
-       VALUES (?, ?, ?, 'pending', datetime('now'))`,
-      [contract_id, month_year, totalAmount],
+      `INSERT INTO invoices (contract_id, month_year, total_amount, status, invoice_type, issue_date)
+       VALUES (?, ?, ?, ?, ?, datetime('now'))`,
+      [
+        contract_id,
+        month_year,
+        totalAmount,
+        "pending",
+        is_move_out ? "move_out" : "normal",
+      ],
     );
 
     const invoiceId = invMeta.insertId;
@@ -394,6 +359,37 @@ exports.createInvoice = async (req, res) => {
         amount: deposit,
         type: "deposit",
       });
+    }
+
+    if (is_move_out) {
+      if (cleaning_fee > 0) {
+        items.push({
+          desc: "ค่าทำความสะอาด",
+          amount: parseFloat(cleaning_fee),
+          type: "cleaning",
+        });
+      }
+      if (damage_fee > 0) {
+        items.push({
+          desc: "ค่าความเสียหาย",
+          amount: parseFloat(damage_fee),
+          type: "damage",
+        });
+      }
+      // Add Deposit Credit
+      items.push({
+        desc: "หักเงินประกันสัญญา",
+        amount: -contractDeposit,
+        type: "deposit_deduction",
+      });
+
+      // Add refund note item? Or handle in UI?
+      // "Remaining to return..."
+      // Use a hidden item or just rely on total_amount?
+      // Let's add an explicit item if there is a refund (negative total)
+      if (totalAmount < 0) {
+        // This logic is implicitly handled by the sum of items
+      }
     }
 
     for (const item of items) {
@@ -422,6 +418,7 @@ exports.getAllInvoices = async (req, res) => {
                 i.month_year, 
                 i.total_amount, 
                 i.status, 
+                i.invoice_type,
                 i.issue_date,
                 r.house_number,
                 t.full_name as tenant_name
@@ -449,6 +446,7 @@ exports.getInvoiceById = async (req, res) => {
     const [invoiceRows] = await db.query(
       `SELECT 
         i.*,
+        i.invoice_type,
         r.house_number,
         r.room_id,
         r.water_rate,
