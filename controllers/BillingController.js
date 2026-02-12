@@ -248,6 +248,11 @@ exports.createInvoice = async (req, res) => {
       }
     }
 
+    if (is_move_out) {
+      totalRent = 0;
+      rentDescription = "Room Rent (Move Out - No Charge)";
+    }
+
     let totalAmount = waterCost + elecCost + totalRent;
 
     // Add deposit amount if present (Partial Deposit Collection)
