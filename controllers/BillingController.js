@@ -78,8 +78,9 @@ exports.calculateBill = async (req, res) => {
         startDate.getMonth() + 1 === billMonth
       ) {
         const startDay = startDate.getDate();
-        const dailyRate = Math.floor(parseFloat(room.base_rent) / 30);
-        let daysStayed = 30 - startDay + 1;
+        const daysInMonth = new Date(billYear, billMonth, 0).getDate();
+        const dailyRate = Math.floor(parseFloat(room.base_rent) / daysInMonth);
+        let daysStayed = daysInMonth - startDay + 1;
 
         // Handle edge cases
         if (daysStayed < 0) daysStayed = 0;
@@ -239,8 +240,9 @@ exports.createInvoice = async (req, res) => {
         startDate.getMonth() + 1 === billMonth
       ) {
         const startDay = startDate.getDate();
-        const dailyRate = Math.floor(parseFloat(room.base_rent) / 30);
-        let daysStayed = 30 - startDay + 1;
+        const daysInMonth = new Date(billYear, billMonth, 0).getDate();
+        const dailyRate = Math.floor(parseFloat(room.base_rent) / daysInMonth);
+        let daysStayed = daysInMonth - startDay + 1;
         if (daysStayed < 0) daysStayed = 0;
 
         totalRent = dailyRate * daysStayed;
@@ -682,8 +684,11 @@ exports.updateMeterReading = async (req, res) => {
           startDate.getMonth() + 1 === billMonth
         ) {
           const startDay = startDate.getDate();
-          const dailyRate = Math.floor(parseFloat(reading.base_rent) / 30);
-          let daysStayed = 30 - startDay + 1;
+          const daysInMonth = new Date(billYear, billMonth, 0).getDate();
+          const dailyRate = Math.floor(
+            parseFloat(reading.base_rent) / daysInMonth,
+          );
+          let daysStayed = daysInMonth - startDay + 1;
           if (daysStayed < 0) daysStayed = 0;
           totalRent = dailyRate * daysStayed;
           // We need to define rentDescription here to update the item
