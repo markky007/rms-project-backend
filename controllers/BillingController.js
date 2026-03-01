@@ -3,7 +3,14 @@ const db = require("../db");
 // Calculate bill based on current reading and previous reading
 exports.calculateBill = async (req, res) => {
   try {
-    const { room_id, current_water, current_elec, month_year } = req.body;
+    const {
+      room_id,
+      current_water,
+      current_elec,
+      month_year,
+      prev_water_reading,
+      prev_elec_reading,
+    } = req.body;
 
     // 1. Fetch Room Details & Rates from the Room itself
     const [roomRows] = await db.query(
@@ -32,13 +39,23 @@ exports.calculateBill = async (req, res) => {
       [room_id, month_year],
     );
 
+    let dbPrevWater = 0;
+    let dbPrevElec = 0;
+
     if (prevRows.length > 0) {
-      prevWater = prevRows[0].water_reading;
-      prevElec = prevRows[0].elec_reading;
+      dbPrevWater = prevRows[0].water_reading;
+      dbPrevElec = prevRows[0].elec_reading;
     }
 
+    prevWater =
+      prev_water_reading !== undefined
+        ? Number(prev_water_reading)
+        : dbPrevWater;
+    prevElec =
+      prev_elec_reading !== undefined ? Number(prev_elec_reading) : dbPrevElec;
+
     // 3. Validation
-    if (current_water < prevWater || current_elec < prevElec) {
+    if (Number(current_water) < prevWater || Number(current_elec) < prevElec) {
       return res.status(400).json({
         error: "Current reading cannot be less than previous reading",
         prevWater,
@@ -47,8 +64,8 @@ exports.calculateBill = async (req, res) => {
     }
 
     // 4. Calculate Usage
-    const waterUsage = current_water - prevWater;
-    const elecUsage = current_elec - prevElec;
+    const waterUsage = Number(current_water) - prevWater;
+    const elecUsage = Number(current_elec) - prevElec;
 
     // 5. Calculate Cost
     const waterCost = waterUsage * room.water_rate;
@@ -174,6 +191,8 @@ exports.createInvoice = async (req, res) => {
       is_move_out, // New flag
       cleaning_fee, // New field
       damage_fee, // New field
+      prev_water_reading,
+      prev_elec_reading,
     } = req.body;
 
     // Check for duplicate invoice (same contract and month_year)
@@ -209,8 +228,15 @@ exports.createInvoice = async (req, res) => {
       [room_id, month_year],
     );
 
-    const prevWater = prevRows.length > 0 ? prevRows[0].water_reading : 0;
-    const prevElec = prevRows.length > 0 ? prevRows[0].elec_reading : 0;
+    const dbPrevWater = prevRows.length > 0 ? prevRows[0].water_reading : 0;
+    const dbPrevElec = prevRows.length > 0 ? prevRows[0].elec_reading : 0;
+
+    const prevWater =
+      prev_water_reading !== undefined
+        ? Number(prev_water_reading)
+        : dbPrevWater;
+    const prevElec =
+      prev_elec_reading !== undefined ? Number(prev_elec_reading) : dbPrevElec;
 
     const waterUsage = water_reading - prevWater;
     const elecUsage = elec_reading - prevElec;
@@ -591,7 +617,13 @@ exports.bulkUpdateStatus = async (req, res) => {
 exports.updateMeterReading = async (req, res) => {
   try {
     const { reading_id } = req.params;
-    const { water_reading, elec_reading, recorded_by } = req.body;
+    const {
+      water_reading,
+      elec_reading,
+      recorded_by,
+      prev_water_reading,
+      prev_elec_reading,
+    } = req.body;
 
     // 1. Get existing meter reading
     const [readingRows] = await db.query(
@@ -619,11 +651,18 @@ exports.updateMeterReading = async (req, res) => {
       [room_id, month_year],
     );
 
-    const prevWater = prevRows.length > 0 ? prevRows[0].water_reading : 0;
-    const prevElec = prevRows.length > 0 ? prevRows[0].elec_reading : 0;
+    const dbPrevWater = prevRows.length > 0 ? prevRows[0].water_reading : 0;
+    const dbPrevElec = prevRows.length > 0 ? prevRows[0].elec_reading : 0;
+
+    const prevWater =
+      prev_water_reading !== undefined
+        ? Number(prev_water_reading)
+        : dbPrevWater;
+    const prevElec =
+      prev_elec_reading !== undefined ? Number(prev_elec_reading) : dbPrevElec;
 
     // 3. Validation
-    if (water_reading < prevWater || elec_reading < prevElec) {
+    if (Number(water_reading) < prevWater || Number(elec_reading) < prevElec) {
       return res.status(400).json({
         error: "Current reading cannot be less than previous reading",
         prevWater,
@@ -632,8 +671,8 @@ exports.updateMeterReading = async (req, res) => {
     }
 
     // 4. Calculate new usage and costs
-    const waterUsage = water_reading - prevWater;
-    const elecUsage = elec_reading - prevElec;
+    const waterUsage = Number(water_reading) - prevWater;
+    const elecUsage = Number(elec_reading) - prevElec;
     const waterCost = waterUsage * reading.water_rate;
     const elecCost = elecUsage * reading.elec_rate;
 
